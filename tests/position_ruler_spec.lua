@@ -38,8 +38,6 @@ assert(visible:sub(1, textoff):match("^%s+$"), "gutter area must contain only al
 assert(visible:sub(textoff + 1, textoff + 1) == "1", "first text column marker must align after gutters")
 assert(visible:sub(textoff + 9, textoff + 10) == "10", "column 10 label must align after gutters")
 
-assert(vim.api.nvim_get_option_value("statusline", { win = win, scope = "local" }):find("render_statusline", 1, true),
-  "statusline must include the live position component")
 assert(ruler.render_statusline():find("Ln 1  Col 1  Pos 1", 1, true), "statusline position format")
 vim.api.nvim_win_set_cursor(win, { 1, 35 })
 assert(ruler.render_statusline():find("Ln 1  Col 36  Pos 36", 1, true), "statusline position updates with cursor movement")

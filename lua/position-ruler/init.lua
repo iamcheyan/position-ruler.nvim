@@ -33,7 +33,6 @@ local state = {
   saved_winhighlight = {},
   scheduled = {},
   saved_winbar = {},
-  saved_statusline = {},
   setup_done = false,
 }
 
@@ -161,10 +160,6 @@ function M.render_winbar()
   return table.concat(parts)
 end
 
-local function statusline_token()
-  return "%{%v:lua.require'position-ruler'.render_statusline()%}"
-end
-
 function M.render_statusline()
   local win = vim.api.nvim_get_current_win()
   local bufnr = vim.api.nvim_win_get_buf(win)
@@ -197,29 +192,6 @@ local function set_ruler_winbar(win, active)
   end
 end
 
-local function set_position_statusline(win, active)
-  if not vim.api.nvim_win_is_valid(win) then
-    return
-  end
-  if active and M.config.show_position then
-    if state.saved_statusline[win] == nil then
-      state.saved_statusline[win] = get_option("statusline", win, "")
-    end
-    local current = get_option("statusline", win, "")
-    if current == "" or current:find("render_statusline", 1, true) then
-      set_option("statusline", "%=" .. statusline_token(), win)
-    elseif not current:find(statusline_token(), 1, true) then
-      set_option("statusline", current .. "%=" .. statusline_token(), win)
-    end
-  elseif state.saved_statusline[win] ~= nil then
-    local current = get_option("statusline", win, "")
-    if current:find(statusline_token(), 1, true) then
-      set_option("statusline", state.saved_statusline[win] or "", win)
-    end
-    state.saved_statusline[win] = nil
-  end
-end
-
 -- Draw (or clear) the ruler for `win`.
 function M.render(win)
   win = normalize_win(win)
@@ -234,7 +206,6 @@ function M.render(win)
   vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
   local active = M.config.ruler and is_active(bufnr)
   set_ruler_winbar(win, active)
-  set_position_statusline(win, active)
 end
 
 -- Coalesce repeated events into one render per tick; cheap for huge files.
@@ -371,7 +342,6 @@ function M.disable()
   vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
   set_cursorcolumn(win, false)
   set_ruler_winbar(win, false)
-  set_position_statusline(win, false)
 end
 
 function M.toggle()
