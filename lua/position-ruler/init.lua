@@ -84,26 +84,12 @@ local function is_active(bufnr)
   return is_supported(bufnr) and not is_too_large(bufnr)
 end
 
--- Width of the text area (window width minus number/sign/fold gutters).
+-- Width of the actual text area, excluding every screen gutter reported by Neovim.
 function M.text_width(win)
+  local info = vim.fn.getwininfo(win)[1]
   local width = vim.api.nvim_win_get_width(win)
-  local number = get_option("number", win, false)
-  local relative = get_option("relativenumber", win, false)
-  if number or relative then
-    width = width - math.max(1, tonumber(get_option("numberwidth", win, 4)) or 4)
-  end
-  local signcolumn = tostring(get_option("signcolumn", win, "auto"))
-  local sign = 0
-  if signcolumn == "yes" then
-    sign = 2
-  elseif signcolumn == "auto" then
-    sign = 1
-  else
-    sign = tonumber(signcolumn) or 0
-  end
-  local foldcolumn = get_option("foldcolumn", win, 0)
-  local fold = tonumber(foldcolumn) or 0
-  return math.max(1, width - sign - fold)
+  local textoff = info and tonumber(info.textoff) or 0
+  return math.max(1, width - textoff)
 end
 
 -- Build a fixed-column ruler: dots at ordinary columns, '+' every fifth
@@ -149,10 +135,13 @@ function M.render_winbar()
     return ""
   end
 
+  local info = vim.fn.getwininfo(win)[1]
+  local textoff = info and tonumber(info.textoff) or 0
   local view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
   local start_col = (view.leftcol or 0) + 1
-  local text = M.build_ruler(start_col, M.text_width(win))
-  local parts = {}
+  local width = math.max(1, vim.api.nvim_win_get_width(win) - textoff)
+  local text = M.build_ruler(start_col, width)
+  local parts = { string.rep(" ", textoff) }
   local current_hl
   for i = 1, #text do
     local col = start_col + i - 1
@@ -435,7 +424,7 @@ local function setup_autocmds()
   })
   vim.api.nvim_create_autocmd("OptionSet", {
     group = group,
-    pattern = { "number", "relativenumber", "signcolumn", "foldcolumn", "numberwidth", "statusline" },
+    pattern = { "number", "relativenumber", "signcolumn", "foldcolumn", "numberwidth" },
     callback = function()
       M.refresh()
     end,

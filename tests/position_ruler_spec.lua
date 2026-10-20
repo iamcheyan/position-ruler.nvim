@@ -4,6 +4,10 @@ local marker = ruler.build_ruler(1, 40)
 assert(marker == "....+...10....+...20....+...30....+...40",
   "ruler must use dots, fifth-column ticks, and labels ending at real tenth columns")
 assert(#marker == 40, "ruler width must match the visible window width")
+local at_tenth = ruler.build_ruler(10, 1)
+assert(at_tenth == "0", "column 10 label must end exactly at text column 10")
+local boundary = ruler.build_ruler(9, 2)
+assert(boundary == "10", "column 10 label must span text columns 9 and 10")
 
 -- Labels remain absolute after horizontal scrolling.
 local scrolled = ruler.build_ruler(101, 40)
@@ -18,13 +22,19 @@ vim.bo[buf].filetype = "text"
 vim.api.nvim_set_current_buf(buf)
 
 assert(vim.tbl_contains(ruler.config.filetypes, vim.bo[buf].filetype), "text must be supported by default")
-
 local win = vim.api.nvim_get_current_win()
-ruler.render()
-assert(vim.api.nvim_get_option_value("winbar", { win = win, scope = "local" }):find("render_winbar", 1, true),
-  "winbar must be configured for the ruler")
-assert(ruler.render_winbar():find("PositionRulerNumber", 1, true) ~= nil,
-  "ruler winbar must highlight tenth columns")
+vim.wo[win].number = true
+vim.wo[win].relativenumber = true
+vim.wo[win].signcolumn = "yes"
+vim.wo[win].foldcolumn = "2"
+ruler.refresh(win)
+vim.wait(50)
+local textoff = vim.fn.getwininfo(win)[1].textoff
+local rendered = ruler.render_winbar()
+local visible = rendered:gsub("%%#.-#", ""):gsub("%%[*]", "")
+assert(#visible == vim.api.nvim_win_get_width(win), "ruler must include gutter padding and fill window width")
+assert(visible:sub(1, textoff):match("^%s+$"), "gutter area must contain only alignment spaces")
+assert(visible:sub(textoff + 1, textoff + 10) == "....+...10", "text column 1 and 10 must align after gutters")
 
 assert(vim.api.nvim_get_option_value("statusline", { win = win, scope = "local" }):find("render_statusline", 1, true),
   "statusline must include the live position component")
