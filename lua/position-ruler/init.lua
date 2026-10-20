@@ -102,6 +102,9 @@ function M.build_ruler(start_col, width)
     local col = start_col + i
     cells[i + 1] = (col % 5 == 0) and "+" or "."
   end
+  if start_col == 1 then
+    cells[1] = "1"
+  end
   for col = math.ceil(start_col / 10) * 10, start_col + width - 1, 10 do
     local label = tostring(col)
     local first_col = col - #label + 1
@@ -138,6 +141,8 @@ function M.render_winbar()
   local info = vim.fn.getwininfo(win)[1]
   local textoff = info and tonumber(info.textoff) or 0
   local view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
+  -- Neovim hides the first text cell beneath textoff columns. Keep logical
+  -- fixed-file column 1 aligned to that first visible text cell.
   local start_col = (view.leftcol or 0) + 1
   local width = math.max(1, vim.api.nvim_win_get_width(win) - textoff)
   local text = M.build_ruler(start_col, width)

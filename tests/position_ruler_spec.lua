@@ -1,9 +1,10 @@
 local ruler = require("position-ruler")
 
 local marker = ruler.build_ruler(1, 40)
-assert(marker == "....+...10....+...20....+...30....+...40",
+assert(marker == "1...+...10....+...20....+...30....+...40",
   "ruler must use dots, fifth-column ticks, and labels ending at real tenth columns")
-assert(#marker == 40, "ruler width must match the visible window width")
+local at_first = ruler.build_ruler(1, 10)
+assert(at_first == "1...+...10", "the first ruler column must be marked at text column 1")
 local at_tenth = ruler.build_ruler(10, 1)
 assert(at_tenth == "0", "column 10 label must end exactly at text column 10")
 local boundary = ruler.build_ruler(9, 2)
@@ -34,7 +35,8 @@ local rendered = ruler.render_winbar()
 local visible = rendered:gsub("%%#.-#", ""):gsub("%%[*]", "")
 assert(#visible == vim.api.nvim_win_get_width(win), "ruler must include gutter padding and fill window width")
 assert(visible:sub(1, textoff):match("^%s+$"), "gutter area must contain only alignment spaces")
-assert(visible:sub(textoff + 1, textoff + 10) == "....+...10", "text column 1 and 10 must align after gutters")
+assert(visible:sub(textoff + 1, textoff + 1) == "1", "first text column marker must align after gutters")
+assert(visible:sub(textoff + 9, textoff + 10) == "10", "column 10 label must align after gutters")
 
 assert(vim.api.nvim_get_option_value("statusline", { win = win, scope = "local" }):find("render_statusline", 1, true),
   "statusline must include the live position component")
