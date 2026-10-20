@@ -16,9 +16,9 @@ local defaults = {
   -- Default filetypes. `.dat`, `.lst` and `.ctl` are mapped to `text` by the
   -- plugin spec; see README.
   filetypes = { "text", "csv" },
-  -- Draw the ruler.
+  -- Draw the single-row fixed-width ruler in the window winbar.
   ruler = true,
-  -- Show `Line:… Col:… Pos:…` at the right end of the ruler row.
+  -- Show the cursor location in the bottom statusline using StatusLine colors.
   show_position = true,
   -- Enable the vertical cursor line (crosshair) while the plugin is active.
   cursorcolumn = true,
@@ -30,8 +30,10 @@ local defaults = {
 
 local state = {
   saved_cursorcolumn = {},
+  saved_winhighlight = {},
   scheduled = {},
   saved_winbar = {},
+  saved_statusline = {},
   setup_done = false,
 }
 
@@ -104,45 +106,27 @@ function M.text_width(win)
   return math.max(1, width - sign - fold)
 end
 
--- Build the two ruler rows for the visible columns [start_col, start_col+width-1].
--- Row 1 marks every tenth column, row 2 shows the ones digit of each column.
-function M.build_ruler(start_col, width, position_text)
+-- Build a fixed-column ruler: dots at ordinary columns, '+' every fifth
+-- column, and the real column number ending exactly at each tenth column.
+function M.build_ruler(start_col, width)
   start_col = math.max(1, start_col or 1)
   width = math.max(1, width or 1)
-
-  local digits = {}
+  local cells = {}
   for i = 0, width - 1 do
     local col = start_col + i
-    digits[#digits + 1] = tostring(col % 10)
+    cells[i + 1] = (col % 5 == 0) and "+" or "."
   end
-
-  local cells = {}
-  for _ = 1, width do
-    cells[#cells + 1] = " "
-  end
-
-  local first = math.floor((start_col - 1) / 10) * 10
-  local last = start_col + width
-  for mark = first, last, 10 do
-    if mark >= 10 then
-      local text = tostring(mark)
-      local start_index = mark - #text + 1 - start_col + 1
-      for k = 1, #text do
-        local index = start_index + k - 1
-        if index >= 1 and index <= width then
-          cells[index] = text:sub(k, k)
-        end
+  for col = math.ceil(start_col / 10) * 10, start_col + width - 1, 10 do
+    local label = tostring(col)
+    local first_col = col - #label + 1
+    for offset = 0, #label - 1 do
+      local target_col = first_col + offset
+      if target_col >= start_col and target_col < start_col + width then
+        cells[target_col - start_col + 1] = label:sub(offset + 1, offset + 1)
       end
     end
   end
-
-  local marker_row = table.concat(cells)
-  if position_text ~= nil and #position_text > 0 and #position_text <= width then
-    local start_index = width - #position_text + 1
-    marker_row = marker_row:sub(1, start_index - 1) .. position_text
-  end
-
-  return marker_row, table.concat(digits)
+  return table.concat(cells)
 end
 
 function M.position_text(win)
@@ -155,12 +139,9 @@ function M.position_text(win)
   local bufnr = vim.api.nvim_win_get_buf(win)
   local line_text = vim.api.nvim_buf_get_lines(bufnr, line - 1, line, false)[1] or ""
   local pos = vim.fn.strcharlen(line_text) > 0 and math.min(col, vim.fn.strchars(line_text)) or col
-  return string.format("Line:%d Col:%d Pos:%d", line, col, pos)
+  return string.format("Ln %d  Col %d  Pos %d", line, col, pos)
 end
 
--- Render the ruler row on demand for winbar's `%{%...%}` expression. Winbar
--- is one screen row, so show each column's ones digit and distinguish each
--- tenth column with a highlight. The position label occupies the right edge.
 function M.render_winbar()
   local win = vim.api.nvim_get_current_win()
   local bufnr = vim.api.nvim_win_get_buf(win)
@@ -169,25 +150,34 @@ function M.render_winbar()
   end
 
   local view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
-  local leftcol = view.leftcol or 0
-  local width = M.text_width(win)
-  local position = M.position_text(win) or ""
-  local digits = {}
-  for i = 0, width - 1 do
-    local col = leftcol + i + 1
+  local start_col = (view.leftcol or 0) + 1
+  local text = M.build_ruler(start_col, M.text_width(win))
+  local parts = {}
+  local current_hl
+  for i = 1, #text do
+    local col = start_col + i - 1
     local hl = (col % 10 == 0) and "%#PositionRulerNumber#" or "%#PositionRulerTick#"
-    digits[#digits + 1] = hl .. tostring(col % 10)
-  end
-
-  if position ~= "" and #position < width then
-    local start = width - #position + 1
-    digits[start] = "%#PositionRulerPosition#" .. position
-    for i = start + 1, width do
-      digits[i] = nil
+    if hl ~= current_hl then
+      parts[#parts + 1] = hl
+      current_hl = hl
     end
+    parts[#parts + 1] = text:sub(i, i)
   end
-  digits[#digits + 1] = "%*"
-  return table.concat(digits)
+  parts[#parts + 1] = "%*"
+  return table.concat(parts)
+end
+
+local function statusline_token()
+  return "%{%v:lua.require'position-ruler'.render_statusline()%}"
+end
+
+function M.render_statusline()
+  local win = vim.api.nvim_get_current_win()
+  local bufnr = vim.api.nvim_win_get_buf(win)
+  if not M.config.show_position or not is_active(bufnr) then
+    return ""
+  end
+  return "%#StatusLine#" .. M.position_text(win) .. "%*"
 end
 
 local function set_ruler_winbar(win, active)
@@ -213,6 +203,29 @@ local function set_ruler_winbar(win, active)
   end
 end
 
+local function set_position_statusline(win, active)
+  if not vim.api.nvim_win_is_valid(win) then
+    return
+  end
+  if active and M.config.show_position then
+    if state.saved_statusline[win] == nil then
+      state.saved_statusline[win] = get_option("statusline", win, "")
+    end
+    local current = get_option("statusline", win, "")
+    if current == "" or current:find("render_statusline", 1, true) then
+      set_option("statusline", "%=" .. statusline_token(), win)
+    elseif not current:find(statusline_token(), 1, true) then
+      set_option("statusline", current .. "%=" .. statusline_token(), win)
+    end
+  elseif state.saved_statusline[win] ~= nil then
+    local current = get_option("statusline", win, "")
+    if current:find(statusline_token(), 1, true) then
+      set_option("statusline", state.saved_statusline[win] or "", win)
+    end
+    state.saved_statusline[win] = nil
+  end
+end
+
 -- Draw (or clear) the ruler for `win`.
 function M.render(win)
   win = normalize_win(win)
@@ -227,6 +240,7 @@ function M.render(win)
   vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
   local active = M.config.ruler and is_active(bufnr)
   set_ruler_winbar(win, active)
+  set_position_statusline(win, active)
 end
 
 -- Coalesce repeated events into one render per tick; cheap for huge files.
@@ -244,20 +258,38 @@ local function schedule_render(win)
 end
 
 local function set_cursorcolumn(win, enable)
-  if not M.config.cursorcolumn then
-    return
-  end
   if not vim.api.nvim_win_is_valid(win) then
     return
   end
   if enable then
-    if state.saved_cursorcolumn[win] == nil then
+    if M.config.cursorcolumn and state.saved_cursorcolumn[win] == nil then
       state.saved_cursorcolumn[win] = get_option("cursorcolumn", win, false)
     end
-    pcall(vim.api.nvim_set_option_value, "cursorcolumn", true, { win = win, scope = "local" })
-  elseif state.saved_cursorcolumn[win] ~= nil then
-    pcall(vim.api.nvim_set_option_value, "cursorcolumn", state.saved_cursorcolumn[win], { win = win, scope = "local" })
-    state.saved_cursorcolumn[win] = nil
+    if M.config.cursorcolumn then
+      set_option("cursorcolumn", true, win)
+    end
+    if state.saved_winhighlight[win] == nil then
+      state.saved_winhighlight[win] = get_option("winhighlight", win, "")
+    end
+    local current = get_option("winhighlight", win, "")
+    local mappings = {}
+    for entry in current:gmatch("[^,]+") do
+      local key, value = entry:match("^([^:]+):(.+)$")
+      if key ~= "CursorColumn" and key ~= "CursorLine" then
+        mappings[#mappings + 1] = entry
+      end
+    end
+    mappings[#mappings + 1] = "CursorColumn:CursorLine"
+    set_option("winhighlight", table.concat(mappings, ","), win)
+  else
+    if state.saved_cursorcolumn[win] ~= nil then
+      set_option("cursorcolumn", state.saved_cursorcolumn[win], win)
+      state.saved_cursorcolumn[win] = nil
+    end
+    if state.saved_winhighlight[win] ~= nil then
+      set_option("winhighlight", state.saved_winhighlight[win], win)
+      state.saved_winhighlight[win] = nil
+    end
   end
 end
 
@@ -344,6 +376,8 @@ function M.disable()
   local bufnr = vim.api.nvim_win_get_buf(win)
   vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
   set_cursorcolumn(win, false)
+  set_ruler_winbar(win, false)
+  set_position_statusline(win, false)
 end
 
 function M.toggle()
@@ -401,7 +435,7 @@ local function setup_autocmds()
   })
   vim.api.nvim_create_autocmd("OptionSet", {
     group = group,
-    pattern = { "number", "relativenumber", "signcolumn", "foldcolumn", "numberwidth" },
+    pattern = { "number", "relativenumber", "signcolumn", "foldcolumn", "numberwidth", "statusline" },
     callback = function()
       M.refresh()
     end,

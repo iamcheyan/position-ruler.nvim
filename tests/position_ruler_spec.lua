@@ -1,25 +1,14 @@
 local ruler = require("position-ruler")
 
--- --- ruler rendering -------------------------------------------------------
-local marker, digits = ruler.build_ruler(1, 40)
-assert(digits == "1234567890123456789012345678901234567890", "digit row must repeat 1-9,0")
-assert(marker:sub(9, 10) == "10", "tenth column marker must end at column 10")
-assert(marker:sub(19, 20) == "20", "twentieth column marker must end at column 20")
-assert(marker:sub(29, 30) == "30", "thirtieth column marker must end at column 30")
-assert(marker:sub(39, 40) == "40", "fortieth column marker must end at column 40")
-assert(#marker == 40 and #digits == 40, "ruler rows must match the requested width")
+local marker = ruler.build_ruler(1, 40)
+assert(marker == "....+...10....+...20....+...30....+...40",
+  "ruler must use dots, fifth-column ticks, and labels ending at real tenth columns")
+assert(#marker == 40, "ruler width must match the visible window width")
 
--- Horizontal scroll: the ruler follows leftcol.
-local scrolled_marker, scrolled_digits = ruler.build_ruler(11, 20)
-assert(scrolled_digits == "12345678901234567890", "scrolled digit row continues the sequence")
-assert(scrolled_marker:sub(9, 10) == "20", "scrolled marker keeps absolute column numbers")
-
--- Position text is right aligned inside the ruler row.
-local position_label = "Line:1 Col:2 Pos:2"
-local with_position = select(1, ruler.build_ruler(1, 40, position_label))
-assert(with_position:sub(-#position_label) == position_label, "position text must sit at the row end")
-assert(#with_position == 40, "position text must not exceed the row width")
-
+-- Labels remain absolute after horizontal scrolling.
+local scrolled = ruler.build_ruler(101, 40)
+assert(scrolled == "....+..110....+..120....+..130....+..140",
+  "scrolled ruler must show real absolute columns")
 -- --- setup, jump and range -------------------------------------------------
 ruler.setup({})
 
@@ -30,15 +19,18 @@ vim.api.nvim_set_current_buf(buf)
 
 assert(vim.tbl_contains(ruler.config.filetypes, vim.bo[buf].filetype), "text must be supported by default")
 
--- The ruler is rendered in winbar; its text should be available there.
+local win = vim.api.nvim_get_current_win()
 ruler.render()
-assert(vim.wo.winbar:find("position%-ruler") ~= nil or vim.wo.winbar:find("render_winbar") ~= nil,
+assert(vim.api.nvim_get_option_value("winbar", { win = win, scope = "local" }):find("render_winbar", 1, true),
   "winbar must be configured for the ruler")
 assert(ruler.render_winbar():find("PositionRulerNumber", 1, true) ~= nil,
   "ruler winbar must highlight tenth columns")
 
--- Crosshair column is enabled while the plugin is active.
-ruler.refresh()
+assert(vim.api.nvim_get_option_value("statusline", { win = win, scope = "local" }):find("render_statusline", 1, true),
+  "statusline must include the live position component")
+assert(ruler.render_statusline():find("Ln 1  Col 1  Pos 1", 1, true), "statusline position format")
+vim.api.nvim_win_set_cursor(win, { 1, 35 })
+assert(ruler.render_statusline():find("Ln 1  Col 36  Pos 36", 1, true), "statusline position updates with cursor movement")
 assert(vim.api.nvim_get_option_value("cursorcolumn", { win = vim.api.nvim_get_current_win(), scope = "local" }) == true,
   "cursorcolumn must be enabled for supported buffers")
 

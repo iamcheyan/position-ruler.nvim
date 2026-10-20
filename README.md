@@ -14,7 +14,7 @@ It helps when you must know the exact byte/column position in fixed-length recor
    ```
 
 2. **Follows horizontal scrolling** — the ruler always reflects the visible columns, so `leftcol` shifts are shown correctly.
-4. **Live cursor position** — shows `Line:100 Col:37 Pos:37` on the ruler row.
+4. **Live cursor position** — shows `Ln 34  Col 107  Pos 107` in the bottom statusline area.
 5. **`:PositionRange`** — after a visual selection, reports the selected span, e.g. `POSITION(12:16)`.
 6. **`:PositionJump 120`** — jumps straight to column 120 and scrolls it into view.
 7. **Enabled by default for** `txt`, `dat`, `lst`, `ctl`, `csv`.
@@ -22,7 +22,7 @@ It helps when you must know the exact byte/column position in fixed-length recor
 9. **Winbar rendered** — stays visible with the cursor on the first line; no buffer text is modified.
 10. **Crosshair** — enables `cursorcolumn` while active, so the vertical line lines up with the ruler column; it is restored when you leave the buffer.
 
-> The ruler occupies one row. Each column shows its ones digit; every tenth column is highlighted, and the current position label is right aligned.
+This is a single-line fixed-width file viewer, not a code-editor ruler.
 
 
 ## Installation (lazy.nvim)
@@ -80,9 +80,8 @@ vim.filetype.add({
 
 | Group | Default link | Used for |
 |---|---|---|
-| `PositionRulerNumber` | `Comment` | Tenth-column markers and the position label |
-| `PositionRulerTick` | `Comment` | Per-column digit row |
-| `PositionRulerPosition` | `Special` | Reserved for the position label |
+| `PositionRulerTick` | `Comment` | Ordinary ruler cells |
+| `PositionRulerNumber` | `Comment` | Real tenth-column labels |
 
 All groups are created with `default = true`, so a colorscheme can override them.
 
