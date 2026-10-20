@@ -2,13 +2,14 @@
 -- A character-position ruler for fixed-width text files
 -- (txt / dat / lst / ctl / csv) and COBOL data files.
 --
--- The ruler is drawn with extmarks (nvim_buf_set_extmark) above the first
--- visible line of the window, follows horizontal scrolling, and reports the
--- cursor position. Requires Neovim 0.10+.
+-- The ruler uses the window winbar so it stays visible when the cursor is on
+-- the first line. Neovim does not render virt_lines above line 1. It follows
+-- horizontal scrolling and reports the cursor position. Requires Neovim 0.10+.
 
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("position-ruler")
+local winbar_token = "%{%v:lua.require'position-ruler'.render_winbar()%}"
 
 local defaults = {
   enabled = true,
@@ -30,6 +31,7 @@ local defaults = {
 local state = {
   saved_cursorcolumn = {},
   scheduled = {},
+  saved_winbar = {},
   setup_done = false,
 }
 
@@ -46,6 +48,10 @@ local function get_option(name, win, default)
     return value
   end
   return default
+end
+
+local function set_option(name, value, win)
+  pcall(vim.api.nvim_set_option_value, name, value, { win = win, scope = "local" })
 end
 
 local function is_supported(bufnr)
@@ -152,6 +158,61 @@ function M.position_text(win)
   return string.format("Line:%d Col:%d Pos:%d", line, col, pos)
 end
 
+-- Render the ruler row on demand for winbar's `%{%...%}` expression. Winbar
+-- is one screen row, so show each column's ones digit and distinguish each
+-- tenth column with a highlight. The position label occupies the right edge.
+function M.render_winbar()
+  local win = vim.api.nvim_get_current_win()
+  local bufnr = vim.api.nvim_win_get_buf(win)
+  if not M.config.ruler or not is_active(bufnr) then
+    return ""
+  end
+
+  local view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
+  local leftcol = view.leftcol or 0
+  local width = M.text_width(win)
+  local position = M.position_text(win) or ""
+  local digits = {}
+  for i = 0, width - 1 do
+    local col = leftcol + i + 1
+    local hl = (col % 10 == 0) and "%#PositionRulerNumber#" or "%#PositionRulerTick#"
+    digits[#digits + 1] = hl .. tostring(col % 10)
+  end
+
+  if position ~= "" and #position < width then
+    local start = width - #position + 1
+    digits[start] = "%#PositionRulerPosition#" .. position
+    for i = start + 1, width do
+      digits[i] = nil
+    end
+  end
+  digits[#digits + 1] = "%*"
+  return table.concat(digits)
+end
+
+local function set_ruler_winbar(win, active)
+  if not vim.api.nvim_win_is_valid(win) then
+    return
+  end
+  if active then
+    if state.saved_winbar[win] == nil then
+      state.saved_winbar[win] = get_option("winbar", win, "")
+    end
+    -- Keep a user's existing winbar intact. The normal Neovim config has an
+    -- empty winbar on text/csv buffers, while Heirline owns other filetypes.
+    local current = get_option("winbar", win, "")
+    if current == "" or current == winbar_token then
+      set_option("winbar", winbar_token, win)
+    end
+  elseif state.saved_winbar[win] ~= nil then
+    local current = get_option("winbar", win, "")
+    if current == winbar_token then
+      set_option("winbar", state.saved_winbar[win] or "", win)
+    end
+    state.saved_winbar[win] = nil
+  end
+end
+
 -- Draw (or clear) the ruler for `win`.
 function M.render(win)
   win = normalize_win(win)
@@ -164,30 +225,8 @@ function M.render(win)
   end
 
   vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
-
-  if not M.config.ruler or not is_active(bufnr) then
-    return
-  end
-
-  local view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
-  local leftcol = view.leftcol or 0
-  local topline = view.topline or 1
-  local width = M.text_width(win)
-
-  local marker_row, digit_row = M.build_ruler(leftcol + 1, width, M.position_text(win))
-
-  local row = math.max(0, topline - 1)
-  local ok = pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, {
-    virt_lines = {
-      { { marker_row, "PositionRulerNumber" } },
-      { { digit_row, "PositionRulerTick" } },
-    },
-    virt_lines_above = true,
-    priority = 10,
-  })
-  if not ok then
-    return
-  end
+  local active = M.config.ruler and is_active(bufnr)
+  set_ruler_winbar(win, active)
 end
 
 -- Coalesce repeated events into one render per tick; cheap for huge files.

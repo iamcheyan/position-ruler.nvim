@@ -14,13 +14,16 @@ It helps when you must know the exact byte/column position in fixed-length recor
    ```
 
 2. **Follows horizontal scrolling** — the ruler always reflects the visible columns, so `leftcol` shifts are shown correctly.
-3. **Live cursor position** — shows `Line:100 Col:37 Pos:37` at the right end of the ruler row.
-4. **`:PositionRange`** — after a visual selection, reports the selected span, e.g. `POSITION(12:16)`.
-5. **`:PositionJump 120`** — jumps straight to column 120 and scrolls it into view.
-6. **Enabled by default for** `txt`, `dat`, `lst`, `ctl`, `csv`.
-7. **Large-file safe** — files above `max_file_size` (default 100 MB) skip the ruler, and updates are coalesced per tick to avoid frequent redraws.
-8. **Extmark based** — the ruler is drawn with `nvim_buf_set_extmark` (`virt_lines`), never modifying buffer content.
-9. **Crosshair** — enables `cursorcolumn` while active, so the vertical line lines up with the ruler column; it is restored when you leave the buffer.
+4. **Live cursor position** — shows `Line:100 Col:37 Pos:37` on the ruler row.
+5. **`:PositionRange`** — after a visual selection, reports the selected span, e.g. `POSITION(12:16)`.
+6. **`:PositionJump 120`** — jumps straight to column 120 and scrolls it into view.
+7. **Enabled by default for** `txt`, `dat`, `lst`, `ctl`, `csv`.
+8. **Large-file safe** — files above `max_file_size` (default 100 MB) skip the ruler, and updates are coalesced per tick to avoid frequent redraws.
+9. **Winbar rendered** — stays visible with the cursor on the first line; no buffer text is modified.
+10. **Crosshair** — enables `cursorcolumn` while active, so the vertical line lines up with the ruler column; it is restored when you leave the buffer.
+
+> The ruler occupies one row. Each column shows its ones digit; every tenth column is highlighted, and the current position label is right aligned.
+
 
 ## Installation (lazy.nvim)
 

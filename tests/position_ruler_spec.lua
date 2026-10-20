@@ -30,10 +30,12 @@ vim.api.nvim_set_current_buf(buf)
 
 assert(vim.tbl_contains(ruler.config.filetypes, vim.bo[buf].filetype), "text must be supported by default")
 
--- The ruler must be drawn with an extmark in the plugin namespace.
+-- The ruler is rendered in winbar; its text should be available there.
 ruler.render()
-local marks = vim.api.nvim_buf_get_extmarks(buf, ruler.namespace, 0, -1, {})
-assert(#marks == 1, "exactly one ruler extmark must be set")
+assert(vim.wo.winbar:find("position%-ruler") ~= nil or vim.wo.winbar:find("render_winbar") ~= nil,
+  "winbar must be configured for the ruler")
+assert(ruler.render_winbar():find("PositionRulerNumber", 1, true) ~= nil,
+  "ruler winbar must highlight tenth columns")
 
 -- Crosshair column is enabled while the plugin is active.
 ruler.refresh()
